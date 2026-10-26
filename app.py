@@ -1,7 +1,9 @@
 import base64
+import html
 import json
 import logging
 import os
+import re
 import sqlite3
 import streamlit as st
 import streamlit.components.v1 as components
@@ -57,7 +59,16 @@ def result_view(row,key,save=True):
     with st.container(border=True):
         st.markdown(f"**{row['title']}**")
         st.caption(f"{row['authors'] or 'Not available'} · {row['year'] or 'Not available'} · PDF halaman {row['page_index']+1} · DOI: {row.get('doi') or 'Not available'}")
-        st.text(row['verified_quote'])
+        # Format whitespace only for reading; keep the verified source untouched.
+        readable_quote = re.sub(r'\s+', ' ', row['verified_quote']).strip()
+        st.markdown(
+            '<div style="line-height:1.65;overflow-wrap:anywhere;margin:0.5rem 0;">'
+            + html.escape(readable_quote) + '</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption('Paparan dirapikan: jarak dan pemisahan baris sahaja. Perkataan asal dikekalkan.')
+        with st.expander('Lihat teks asal hasil ekstraksi PDF'):
+            st.text(row['verified_quote'])
         st.caption('Verified: padanan teks sumber PDF; ini tidak mengesahkan kebenaran dapatan kajian.')
         st.write('Klasifikasi:',row.get('classification','Inconclusive'))
         if row.get('interpretation'):
