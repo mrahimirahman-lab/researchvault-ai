@@ -138,7 +138,7 @@ def test_hybrid_vector_search_and_partial_index(db,pdf,monkeypatch):
     def embedding(self,texts):
         return [[float('ease' in t.lower()),1.0,0.5] for t in texts]
     monkeypatch.setattr(Vectors,'embed',embedding)
-    monkeypatch.setattr(search_module,'has_key',lambda:True)
+    monkeypatch.setattr(search_module,'ai_enabled',lambda:True)
     v=Vectors(db)
     v.index(pid)
     rows,warnings=Search(db).search('ease',mode='Hybrid')

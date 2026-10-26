@@ -1,5 +1,5 @@
 import re
-from core.config import has_key
+from core.config import ai_enabled
 from services.quote_verifier import verify_quote
 
 class Search:
@@ -33,7 +33,7 @@ class Search:
                                    ' ORDER BY bm25(chunks_fts) LIMIT 200',(match,*params))
         warnings, semantic = [], []
         if mode != 'Keyword':
-            if not has_key():
+            if not ai_enabled():
                 warnings.append('AI key unavailable: showing keyword results only.')
             else:
                 try:

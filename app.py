@@ -7,7 +7,7 @@ import re
 import sqlite3
 import streamlit as st
 import streamlit.components.v1 as components
-from core.config import DATA, MODEL, EMBED_MODEL, MAX_UPLOAD, MAX_AI_CHUNKS, has_key
+from core.config import DATA, MODEL, EMBED_MODEL, MAX_UPLOAD, MAX_AI_CHUNKS, has_key, ai_enabled, PROVIDER, OLLAMA_BASE_URL
 from core.database import Database
 from services.library import Library
 from services.search import Search
@@ -29,8 +29,8 @@ papers=library.papers()
 by_id={p['id']:p for p in papers}
 nav=st.sidebar.radio('Ruang Penyelidikan',['Dashboard','Pustaka Kertas','AI Evidence Finder','Construct Explorer','Evidence Bank','AI Literature Synthesis','Profil Penyelidikan','Tetapan'])
 st.sidebar.caption('ResearchVault AI • Local-first')
-st.sidebar.caption('AI aktif' if has_key() else 'Mod tempatan • AI tidak dikonfigurasi')
-st.sidebar.info('Petikan dihantar ke OpenAI apabila anda menggunakan AI atau semantic indexing. DOI lookup menghantar DOI ke Crossref. PDF asal disimpan secara tempatan.')
+st.sidebar.caption(('Ollama dipilih • semak sambungan di Tetapan' if PROVIDER == 'ollama' else 'OpenAI dikonfigurasi') if ai_enabled() else 'Mod tempatan • AI tidak dikonfigurasi')
+st.sidebar.info(('AI menggunakan Ollama di '+OLLAMA_BASE_URL+'. Tiada API key diperlukan. ' if PROVIDER == 'ollama' else 'Petikan dihantar ke OpenAI apabila anda menggunakan AI atau semantic indexing. ')+'DOI lookup menghantar DOI ke Crossref. PDF asal disimpan secara tempatan.')
 
 
 def attempt(fn):
@@ -78,7 +78,7 @@ def result_view(row,key,save=True):
             if col1.button('Simpan Evidence',key='save'+key):
                 if attempt(lambda:evidence.save(row)):
                     st.success('Evidence disimpan')
-            if col2.button('Klasifikasi AI',key='class'+key,disabled=not has_key()):
+            if col2.button('Klasifikasi AI',key='class'+key,disabled=not ai_enabled()):
                 classified=attempt(lambda:ai.classify(row))
                 if classified:
                     st.session_state['classified'+key]=classified
@@ -125,7 +125,7 @@ def run_search(construct=''):
         if purpose=='Cross-Paper Synthesis':
             st.info('Simpan petikan yang anda pilih ke Evidence Bank, kemudian gunakan AI Literature Synthesis untuk mengawal sumber sintesis.')
         elif purpose=='Conceptual Search' and mode=='Keyword':
-            st.info('Gunakan Hybrid atau Semantic dengan AI key dan embeddings untuk carian vektor.')
+            st.info('Gunakan Hybrid atau Semantic dengan provider AI dan embeddings yang telah dikonfigurasi untuk carian vektor.')
 
 
 st.title('ResearchVault AI')
@@ -162,14 +162,14 @@ elif nav=='Pustaka Kertas':
         if search.lower() in ' '.join(str(p[k]) for k in ['title','authors','year','keywords']).lower() and (category=='Semua' or category==cat): visible.append(p)
     if visible: st.dataframe([{k:p[k] for k in ['title','authors','year','status','metadata_status']} for p in visible],hide_index=True,use_container_width=True)
     selected_bulk=st.multiselect('Pilih kertas untuk operasi AI',list(by_id),format_func=lambda i:by_id[i]['title'])
-    st.caption('Embeddings dicache setiap chunk dan model. Operasi ini menghantar teks dokumen dan mungkin dikenakan kos API.')
+    st.caption('Embeddings dicache setiap chunk dan model. '+('Teks diproses oleh server Ollama yang dikonfigurasi.' if PROVIDER == 'ollama' else 'Operasi ini menghantar teks dokumen ke OpenAI dan mungkin dikenakan kos API.'))
     c1,c2=st.columns(2)
-    if c1.button('Index Semantic — pilihan',disabled=not has_key() or not selected_bulk):
+    if c1.button('Index Semantic — pilihan',disabled=not ai_enabled() or not selected_bulk):
         from services.vectors import Vectors
         for pid in selected_bulk:
             count=attempt(lambda p=pid:Vectors(db).index(p))
             if count is not None: st.success(f'{by_id[pid]["title"]}: {count} chunks indexed')
-    if c2.button('Analyze Relevance — pilihan',disabled=not has_key() or not selected_bulk):
+    if c2.button('Analyze Relevance — pilihan',disabled=not ai_enabled() or not selected_bulk):
         for pid in selected_bulk:
             result=attempt(lambda p=pid:ai.relevance(p))
             if result: st.json(result)
@@ -187,7 +187,7 @@ elif nav=='Pustaka Kertas':
                 except sqlite3.IntegrityError: st.error('DOI ini sudah digunakan oleh kertas lain. Semak duplikat.')
         if st.button('Semak DOI dengan Crossref'):
             if attempt(lambda:(library.crossref(pid,values['doi']),True)[1]): st.rerun()
-        if st.button('Analyze Relevance',disabled=not has_key()):
+        if st.button('Analyze Relevance',disabled=not ai_enabled()):
             if attempt(lambda:ai.relevance(pid)): st.rerun()
         if p['assessment']:
             st.warning('Skor relevansi ialah heuristik AI, bukan pengukuran saintifik yang disahkan. Analisis ialah sampel, bukan semakan menyeluruh.')
@@ -243,7 +243,7 @@ elif nav=='AI Literature Synthesis':
     rows=evidence.all()
     ids=st.multiselect('Pilih sumber evidence',[r['id'] for r in rows],format_func=lambda i:next(r['title']+' · '+r['construct'] for r in rows if r['id']==i))
     question=st.text_area('Arahan sintesis',value='Compare the selected evidence, cite evidence IDs, distinguish theoretical and empirical findings, and identify contradictions and limitations.')
-    if st.button('Jana draf sintesis',disabled=not has_key() or not ids):
+    if st.button('Jana draf sintesis',disabled=not ai_enabled() or not ids):
         result=attempt(lambda:ai.synthesize([r for r in rows if r['id'] in ids],question))
         if result: st.session_state['synthesis']=result
     if 'synthesis' in st.session_state:
@@ -271,8 +271,17 @@ elif nav=='Tetapan':
     st.subheader('Tetapan & Privasi')
     st.write('Data tempatan:',str(DATA))
     st.write('AI model:',MODEL,'· Embedding model:',EMBED_MODEL)
-    st.write('API key:', 'Dikonfigurasi (nilai disembunyikan)' if has_key() else 'Tidak dikonfigurasi')
+    st.write('AI provider:', PROVIDER)
+    if PROVIDER == 'openai':
+        st.write('API key:', 'Dikonfigurasi (nilai disembunyikan)' if has_key() else 'Tidak dikonfigurasi')
+    else:
+        st.write('Ollama:', OLLAMA_BASE_URL, '— API key tidak diperlukan')
+        if st.button('Uji sambungan Ollama'):
+            from services.ollama import Ollama
+            status=attempt(lambda:Ollama().status())
+            if status is not None:
+                st.json(status)
     st.write('Had chunks untuk satu operasi AI:',MAX_AI_CHUNKS)
-    st.info('Tetapkan pemboleh ubah dalam .env dan mulakan semula aplikasi. Jangan masukkan API key ke Git. Kertas tidak dihantar untuk AI tanpa operasi AI yang anda mulakan.')
+    st.info('Tetapkan AI_PROVIDER=openai atau ollama dalam .env dan mulakan semula aplikasi. Ollama memerlukan model dimuat turun dan perkhidmatan sedang berjalan. Jangan masukkan API key ke Git. AI hanya dijalankan atas permintaan anda.')
     st.write('Tutup aplikasi sebelum membuat sandaran keseluruhan direktori data: SQLite, uploads dan chroma. Pulihkan semuanya bersama. Tiada OCR, multi-user authentication atau Zotero dalam MVP ini.')
     st.warning('Aplikasi untuk seorang pengguna pada komputer dipercayai. Jangan dedahkan port Streamlit ke Internet tanpa kawalan akses.')

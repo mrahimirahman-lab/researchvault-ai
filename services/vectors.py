@@ -1,5 +1,5 @@
 import hashlib
-from core.config import EMBED_MODEL, has_key
+from core.config import EMBED_MODEL, ai_enabled, PROVIDER
 
 class Vectors:
     def __init__(self, db):
@@ -7,12 +7,15 @@ class Vectors:
         self.db = db
         self.client = chromadb.PersistentClient(path=str(db.root / 'chroma'))
         self.collection = self.client.get_or_create_collection(
-            'papers_'+hashlib.sha256(EMBED_MODEL.encode()).hexdigest()[:12],
+            'papers_'+hashlib.sha256((EMBED_MODEL if PROVIDER == 'openai' else PROVIDER+':'+EMBED_MODEL).encode()).hexdigest()[:12],
             metadata={'hnsw:space':'cosine'})
 
     def embed(self, texts):
-        if not has_key():
+        if not ai_enabled():
             raise ValueError('OPENAI_API_KEY is not configured')
+        if PROVIDER == 'ollama':
+            from services.ollama import Ollama
+            return Ollama().embed(texts)
         from openai import OpenAI
         result = OpenAI().embeddings.create(model=EMBED_MODEL,input=texts)
         return [r.embedding for r in result.data]

@@ -1,6 +1,7 @@
 # Outstanding work
 
 ## Before relying on AI results in a real review
+- Ollama/Llama local inference is now implemented, including local embeddings and a connection/model check. Protocol and UI tests use controlled responses. Run the actual models on the target Windows/GPU computer and verify synthesis quality, VRAM usage and latency; no live Ollama model was available in the cloud test environment.
 - Supply an OpenAI API key privately and exercise actual embedding, relevance, passage classification and synthesis calls. Verify model availability, costs, structured-output compatibility and the quality of real responses. These paths are implemented but live-provider behavior is not validated here.
 - Run Crossref lookup against a DOI from your own uploaded paper and confirm document/metadata correspondence. Automatic DOI extraction/inference is pending.
 - Manually validate native browser PDF display at the selected page; Streamlit AppTest cannot exercise the browser's PDF plugin. Download fallback is present.

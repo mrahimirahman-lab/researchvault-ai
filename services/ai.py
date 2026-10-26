@@ -1,5 +1,5 @@
 import json
-from core.config import MODEL, MAX_AI_CHUNKS, has_key
+from core.config import MODEL, MAX_AI_CHUNKS, ai_enabled, PROVIDER
 from core.models import Relevance, Synthesis, PassageAssessment
 from services.quote_verifier import verify_quote
 
@@ -14,8 +14,11 @@ class AI:
         self.db=db
 
     def call(self,schema,payload):
-        if not has_key():
+        if not ai_enabled():
             raise ValueError('Configure OPENAI_API_KEY to enable AI features')
+        if PROVIDER == 'ollama':
+            from services.ollama import Ollama
+            return Ollama().generate(schema, SYSTEM, payload)
         from openai import OpenAI
         result = OpenAI().chat.completions.parse(model=MODEL,
             messages=[{'role':'system','content':SYSTEM},{'role':'user','content':json.dumps(payload)}],
